@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/use-toast";
 
 // Sample data
 const pipelineStages = [
@@ -29,6 +33,15 @@ const pipelineData = [
 
 const Pipeline = () => {
   const [leads, setLeads] = useState(pipelineData);
+  const [isAddOpportunityOpen, setIsAddOpportunityOpen] = useState(false);
+  const [newOpportunity, setNewOpportunity] = useState({
+    name: "",
+    company: "",
+    value: "",
+    stage: "new",
+    assignee: "AS"
+  });
+  const { toast } = useToast();
   
   // Simple drag and drop implementation
   const [draggedItem, setDraggedItem] = useState<number | null>(null);
@@ -51,6 +64,53 @@ const Pipeline = () => {
     }
   };
 
+  const handleAddOpportunity = () => {
+    // Validate form
+    if (!newOpportunity.name || !newOpportunity.company || !newOpportunity.value) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Format value if it doesn't start with $
+    const formattedValue = newOpportunity.value.startsWith('$') 
+      ? newOpportunity.value 
+      : `$${newOpportunity.value}`;
+
+    // Create new opportunity
+    const newLeadWithId = {
+      id: leads.length + 1,
+      ...newOpportunity,
+      value: formattedValue
+    };
+    
+    // Add to leads
+    setLeads([...leads, newLeadWithId]);
+    
+    // Reset form and close dialog
+    setNewOpportunity({
+      name: "",
+      company: "",
+      value: "",
+      stage: "new",
+      assignee: "AS"
+    });
+    setIsAddOpportunityOpen(false);
+    
+    toast({
+      title: "Opportunity Added",
+      description: `${newOpportunity.name} from ${newOpportunity.company} has been added successfully`
+    });
+  };
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setNewOpportunity(prev => ({ ...prev, [name]: value }));
+  };
+
   return (
     <Layout>
       <div className="p-6 space-y-6">
@@ -58,7 +118,77 @@ const Pipeline = () => {
           <h1 className="text-3xl font-bold">Pipeline</h1>
           <div className="flex gap-2">
             <Button variant="outline">Filter</Button>
-            <Button>Add Opportunity</Button>
+            <Dialog open={isAddOpportunityOpen} onOpenChange={setIsAddOpportunityOpen}>
+              <DialogTrigger asChild>
+                <Button>Add Opportunity</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Opportunity</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Contact Name *</Label>
+                    <Input 
+                      id="name" 
+                      name="name" 
+                      value={newOpportunity.name} 
+                      onChange={handleInputChange} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company">Company Name *</Label>
+                    <Input 
+                      id="company" 
+                      name="company" 
+                      value={newOpportunity.company} 
+                      onChange={handleInputChange} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="value">Deal Value *</Label>
+                    <Input 
+                      id="value" 
+                      name="value" 
+                      placeholder="$0.00"
+                      value={newOpportunity.value} 
+                      onChange={handleInputChange} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="stage">Stage</Label>
+                    <select 
+                      id="stage" 
+                      name="stage" 
+                      className="w-full p-2 border rounded-md"
+                      value={newOpportunity.stage}
+                      onChange={handleInputChange}
+                    >
+                      {pipelineStages.map(stage => (
+                        <option key={stage.id} value={stage.id}>{stage.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="assignee">Assigned To</Label>
+                    <select 
+                      id="assignee" 
+                      name="assignee" 
+                      className="w-full p-2 border rounded-md"
+                      value={newOpportunity.assignee}
+                      onChange={handleInputChange}
+                    >
+                      <option value="AS">Alex Smith</option>
+                      <option value="RH">Rachel Harris</option>
+                      <option value="LM">Lisa Miller</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end pt-4">
+                    <Button onClick={handleAddOpportunity}>Add Opportunity</Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
         
