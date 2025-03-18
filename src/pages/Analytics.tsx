@@ -1,4 +1,3 @@
-
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -207,7 +206,12 @@ const Analytics = () => {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="month" />
                         <YAxis domain={[0, 100]} />
-                        <Tooltip formatter={(value) => [`${value.toFixed(1)}%`, 'Conversion Rate']} />
+                        <Tooltip formatter={(value) => {
+                          if (typeof value === 'number') {
+                            return [`${value.toFixed(1)}%`, 'Conversion Rate'];
+                          }
+                          return [`${value}%`, 'Conversion Rate'];
+                        }} />
                         <Line type="monotone" dataKey="rate" name="Conversion Rate %" stroke="#8884d8" />
                       </LineChart>
                     </ResponsiveContainer>
