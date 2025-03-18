@@ -1,80 +1,122 @@
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Line, LineChart, PieChart, Pie, Cell } from "recharts";
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from "recharts";
 import { Layout } from "@/components/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CalendarDays, DollarSign, LineChart as LineChartIcon, Users } from "lucide-react";
-
-const monthlyData = [
-  { name: "Jan", leads: 400, converted: 240 },
-  { name: "Feb", leads: 300, converted: 139 },
-  { name: "Mar", leads: 200, converted: 80 },
-  { name: "Apr", leads: 278, converted: 150 },
-  { name: "May", leads: 189, converted: 80 },
-  { name: "Jun", leads: 239, converted: 110 },
-  { name: "Jul", leads: 349, converted: 180 },
-];
-
-const weeklyData = [
-  { name: "Mon", leads: 45, converted: 22 },
-  { name: "Tue", leads: 52, converted: 28 },
-  { name: "Wed", leads: 38, converted: 15 },
-  { name: "Thu", leads: 60, converted: 32 },
-  { name: "Fri", leads: 42, converted: 18 },
-  { name: "Sat", leads: 28, converted: 12 },
-  { name: "Sun", leads: 20, converted: 8 },
-];
-
-const sourceData = [
-  { name: "Website", value: 40 },
-  { name: "Referral", value: 30 },
-  { name: "Social Media", value: 20 },
-  { name: "Email", value: 10 },
-];
+import { getAllLeads, getLeadsBySource, getConversionRateData, Lead, Activity } from "@/services/api";
+import { useNavigate } from "react-router-dom";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
-const upcomingTasks = [
-  { id: 1, title: "Follow up with John Smith", date: "Today, 2:00 PM" },
-  { id: 2, title: "Send proposal to TechCorp", date: "Tomorrow, 10:00 AM" },
-  { id: 3, title: "Call Michael Brown", date: "Jul 22, 11:30 AM" },
-  { id: 4, title: "Meeting with Acme Inc.", date: "Jul 24, 3:00 PM" },
-];
-
-const recentLeads = [
-  { id: 1, name: "Alex Johnson", company: "Future Tech", date: "Jul 20", status: "New" },
-  { id: 2, name: "Maria Rodriguez", company: "Insight Solutions", date: "Jul 19", status: "Contacted" },
-  { id: 3, name: "James Wilson", company: "Global Systems", date: "Jul 18", status: "Qualified" },
-];
-
-const statsCards = [
-  { 
-    title: "Total Leads", 
-    value: "3,246", 
-    trend: "+12.5%", 
-    icon: <Users className="h-5 w-5 text-blue-600" />
-  },
-  { 
-    title: "Conversion Rate", 
-    value: "42.3%", 
-    trend: "+3.2%", 
-    icon: <LineChartIcon className="h-5 w-5 text-green-600" />
-  },
-  { 
-    title: "Avg. Response Time", 
-    value: "2.4h", 
-    trend: "-18%", 
-    icon: <CalendarDays className="h-5 w-5 text-purple-600" />
-  },
-  { 
-    title: "Revenue Pipeline", 
-    value: "$1.2M", 
-    trend: "+15.6%", 
-    icon: <DollarSign className="h-5 w-5 text-yellow-600" />
-  },
-];
-
 const Dashboard = () => {
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [sourceData, setSourceData] = useState<{name: string, value: number}[]>([]);
+  const [performanceData, setPerformanceData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch all leads
+        const fetchedLeads = await getAllLeads();
+        setLeads(fetchedLeads);
+        
+        // Get source data for pie chart
+        const sources = getLeadsBySource();
+        setSourceData(sources);
+        
+        // Get conversion rate data
+        const conversionData = getConversionRateData();
+        setPerformanceData(conversionData);
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, []);
+  
+  // Calculate stats
+  const totalLeads = leads.length;
+  const qualifiedLeads = leads.filter(lead => lead.status === "Qualified").length;
+  const conversionRate = totalLeads > 0 ? (qualifiedLeads / totalLeads * 100).toFixed(1) : "0.0";
+  const avgBudget = leads.length > 0 
+    ? (leads.reduce((sum, lead) => sum + (lead.budget || 0), 0) / leads.length).toFixed(0) 
+    : "0";
+  
+  // Generate recent leads
+  const recentLeads = [...leads]
+    .sort((a, b) => {
+      const dateA = a.lastContact ? new Date(a.lastContact).getTime() : 0;
+      const dateB = b.lastContact ? new Date(b.lastContact).getTime() : 0;
+      return dateB - dateA;
+    })
+    .slice(0, 5);
+  
+  // Generate upcoming tasks by extracting from activities
+  const allActivities: Activity[] = [];
+  leads.forEach(lead => {
+    if (lead.activities) {
+      lead.activities.forEach(activity => {
+        allActivities.push({
+          ...activity,
+          leadName: lead.name,
+          leadId: lead.id
+        } as any);
+      });
+    }
+  });
+  
+  const upcomingTasks = allActivities
+    .filter(activity => {
+      // Only include future or recent activities
+      const activityDate = new Date(activity.date);
+      const now = new Date();
+      const diffTime = activityDate.getTime() - now.getTime();
+      const diffDays = diffTime / (1000 * 3600 * 24);
+      return diffDays >= -1 && diffDays <= 14; // Include yesterday's activities and up to 2 weeks in the future
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 4);
+
+  const statsCards = [
+    { 
+      title: "Total Leads", 
+      value: totalLeads.toString(), 
+      trend: "+12.5%", 
+      icon: <Users className="h-5 w-5 text-blue-600" />
+    },
+    { 
+      title: "Conversion Rate", 
+      value: `${conversionRate}%`, 
+      trend: "+3.2%", 
+      icon: <LineChartIcon className="h-5 w-5 text-green-600" />
+    },
+    { 
+      title: "Avg. Response Time", 
+      value: "2.4h", 
+      trend: "-18%", 
+      icon: <CalendarDays className="h-5 w-5 text-purple-600" />
+    },
+    { 
+      title: "Avg. Deal Size", 
+      value: `$${Number(avgBudget).toLocaleString()}`, 
+      trend: "+5.3%", 
+      icon: <DollarSign className="h-5 w-5 text-yellow-600" />
+    },
+  ];
+
+  // Handle lead click
+  const handleLeadClick = (leadId: number) => {
+    navigate(`/leads/${leadId}`);
+  };
+
   return (
     <Layout>
       <div className="p-6 space-y-6">
@@ -111,26 +153,34 @@ const Dashboard = () => {
                   <TabsTrigger value="monthly">Monthly</TabsTrigger>
                 </TabsList>
                 <TabsContent value="monthly">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={monthlyData}>
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="leads" name="Total Leads" fill="#8884d8" />
-                      <Bar dataKey="converted" name="Converted" fill="#82ca9d" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {isLoading ? (
+                    <div className="h-300 flex items-center justify-center">Loading data...</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={performanceData}>
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="leads" name="Total Leads" fill="#8884d8" />
+                        <Bar dataKey="conversions" name="Converted" fill="#82ca9d" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </TabsContent>
                 <TabsContent value="weekly">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={weeklyData}>
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="leads" name="Total Leads" fill="#8884d8" />
-                      <Bar dataKey="converted" name="Converted" fill="#82ca9d" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {isLoading ? (
+                    <div className="h-300 flex items-center justify-center">Loading data...</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={performanceData.slice(-7)}>
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="leads" name="Total Leads" fill="#8884d8" />
+                        <Bar dataKey="conversions" name="Converted" fill="#82ca9d" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </TabsContent>
               </Tabs>
             </CardContent>
@@ -141,25 +191,29 @@ const Dashboard = () => {
               <CardTitle>Lead Sources</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={sourceData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {sourceData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => [`${value}`, 'Leads']} />
-                </PieChart>
-              </ResponsiveContainer>
+              {isLoading ? (
+                <div className="h-300 flex items-center justify-center">Loading data...</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={sourceData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {sourceData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value}`, 'Leads']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -171,17 +225,42 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {upcomingTasks.map(task => (
-                  <div key={task.id} className="flex justify-between items-center pb-2 border-b last:border-0">
-                    <div>
-                      <div className="font-medium">{task.title}</div>
-                      <div className="text-sm text-gray-500">{task.date}</div>
-                    </div>
-                    <div>
-                      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                    </div>
-                  </div>
-                ))}
+                {upcomingTasks.length > 0 ? (
+                  upcomingTasks.map((task, index) => {
+                    let displayDate = task.date;
+                    // Format date as "Today", "Tomorrow" or actual date
+                    const taskDate = new Date(task.date);
+                    const today = new Date();
+                    const tomorrow = new Date();
+                    tomorrow.setDate(today.getDate() + 1);
+                    
+                    if (taskDate.toDateString() === today.toDateString()) {
+                      displayDate = "Today";
+                    } else if (taskDate.toDateString() === tomorrow.toDateString()) {
+                      displayDate = "Tomorrow";
+                    } else {
+                      displayDate = taskDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    }
+                    
+                    return (
+                      <div 
+                        key={index} 
+                        className="flex justify-between items-center pb-2 border-b last:border-0 cursor-pointer hover:bg-gray-50"
+                        onClick={() => task.leadId && handleLeadClick(task.leadId)}
+                      >
+                        <div>
+                          <div className="font-medium">{`${task.type}: ${(task as any).leadName || ""}`}</div>
+                          <div className="text-sm text-gray-500">{task.description}</div>
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {displayDate}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-4 text-gray-500">No upcoming tasks</div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -192,18 +271,35 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentLeads.map(lead => (
-                  <div key={lead.id} className="flex justify-between items-center pb-2 border-b last:border-0">
-                    <div>
-                      <div className="font-medium">{lead.name}</div>
-                      <div className="text-sm text-gray-500">{lead.company}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-gray-500">{lead.date}</div>
-                      <div className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">{lead.status}</div>
-                    </div>
-                  </div>
-                ))}
+                {recentLeads.length > 0 ? (
+                  recentLeads.map((lead) => {
+                    // Format date
+                    let displayDate = lead.lastContact || "";
+                    if (lead.lastContact) {
+                      const contactDate = new Date(lead.lastContact);
+                      displayDate = contactDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    }
+                    
+                    return (
+                      <div 
+                        key={lead.id} 
+                        className="flex justify-between items-center pb-2 border-b last:border-0 cursor-pointer hover:bg-gray-50"
+                        onClick={() => lead.id && handleLeadClick(lead.id)}
+                      >
+                        <div>
+                          <div className="font-medium">{lead.name}</div>
+                          <div className="text-sm text-gray-500">{lead.company || "Unknown Company"}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm text-gray-500">{displayDate}</div>
+                          <div className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">{lead.status || "New"}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-4 text-gray-500">No recent leads</div>
+                )}
               </div>
             </CardContent>
           </Card>

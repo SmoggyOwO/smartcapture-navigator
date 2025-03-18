@@ -7,74 +7,97 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Filter, Plus, List, Grid, DollarSign } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { addLead, getAllLeads } from "@/services/api";
-
-// Sample data
-const leadsData = [
-  { id: 1, name: "John Smith", email: "john@example.com", source: "Website", score: 85, status: "New", budget: 150000 },
-  { id: 2, name: "Emily Johnson", email: "emily@example.com", source: "Referral", score: 92, status: "Contacted", budget: 250000 },
-  { id: 3, name: "Michael Brown", email: "michael@example.com", source: "LinkedIn", score: 78, status: "Qualified", budget: 120000 },
-  { id: 4, name: "Sarah Williams", email: "sarah@example.com", source: "Email Campaign", score: 65, status: "New", budget: 85000 },
-  { id: 5, name: "David Miller", email: "david@example.com", source: "Trade Show", score: 73, status: "Disqualified", budget: 190000 },
-  { id: 6, name: "Jessica Wilson", email: "jessica@example.com", source: "Website", score: 81, status: "Contacted", budget: 175000 },
-  { id: 7, name: "Robert Taylor", email: "robert@example.com", source: "Advertisement", score: 69, status: "New", budget: 95000 },
-  { id: 8, name: "Jennifer Garcia", email: "jennifer@example.com", source: "Webinar", score: 88, status: "Qualified", budget: 230000 },
-];
+import { addLead, getAllLeads, filterLeads, Lead } from "@/services/api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Leads = () => {
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
-  const [leads, setLeads] = useState(leadsData);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingBackend, setIsFetchingBackend] = useState(false);
-  const [newLead, setNewLead] = useState({
+  const [newLead, setNewLead] = useState<Lead>({
     name: "",
     email: "",
     source: "Website",
     status: "New",
     budget: 100000
   });
+  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    status: "all",
+    source: "all",
+    minBudget: "",
+    maxBudget: ""
+  });
   
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Try to fetch leads from the backend if it's available
-    const fetchLeadsFromBackend = async () => {
+    // Fetch leads from our API
+    const fetchLeads = async () => {
       setIsFetchingBackend(true);
       try {
-        const backendLeads = await getAllLeads();
-        if (backendLeads && backendLeads.length > 0) {
-          // Merge with our frontend data, avoiding duplicates based on email
-          const emailsInBackend = backendLeads.map((lead: any) => lead.email);
-          const frontendLeadsNotInBackend = leadsData.filter(lead => 
-            !emailsInBackend.includes(lead.email)
-          );
-          
-          // Combine both sets of leads
-          setLeads([...backendLeads, ...frontendLeadsNotInBackend]);
-          
-          toast({
-            title: "Connected to Backend",
-            description: `Successfully fetched ${backendLeads.length} leads from database`
-          });
-        }
+        const fetchedLeads = await getAllLeads();
+        setLeads(fetchedLeads);
+        setFilteredLeads(fetchedLeads);
+        
+        toast({
+          title: "Leads Loaded",
+          description: `Successfully loaded ${fetchedLeads.length} leads`
+        });
       } catch (error) {
-        console.log("Could not fetch leads from backend:", error);
-        // Silently fall back to frontend data
+        console.error("Error fetching leads:", error);
+        toast({
+          title: "Error",
+          description: "Could not fetch leads",
+          variant: "destructive"
+        });
       } finally {
         setIsFetchingBackend(false);
       }
     };
     
-    fetchLeadsFromBackend();
+    fetchLeads();
   }, [toast]);
+
+  // Apply filters when search term or filters change
+  useEffect(() => {
+    let result = leads;
+    
+    // Apply search term
+    if (searchTerm) {
+      result = filterLeads(searchTerm);
+    }
+    
+    // Apply status filter
+    if (filters.status !== "all") {
+      result = result.filter(lead => lead.status === filters.status);
+    }
+    
+    // Apply source filter
+    if (filters.source !== "all") {
+      result = result.filter(lead => lead.source === filters.source);
+    }
+    
+    // Apply budget range filters
+    if (filters.minBudget) {
+      result = result.filter(lead => lead.budget >= Number(filters.minBudget));
+    }
+    
+    if (filters.maxBudget) {
+      result = result.filter(lead => lead.budget <= Number(filters.maxBudget));
+    }
+    
+    setFilteredLeads(result);
+  }, [searchTerm, filters, leads]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -94,17 +117,6 @@ const Leads = () => {
   
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
-    if (e.target.value === "") {
-      setLeads(leadsData);
-      return;
-    }
-    
-    const filtered = leadsData.filter(lead => 
-      lead.name.toLowerCase().includes(e.target.value.toLowerCase()) ||
-      lead.email.toLowerCase().includes(e.target.value.toLowerCase()) ||
-      lead.source.toLowerCase().includes(e.target.value.toLowerCase())
-    );
-    setLeads(filtered);
   };
   
   const handleLeadClick = (leadId: number) => {
@@ -125,11 +137,13 @@ const Leads = () => {
     setIsLoading(true);
     
     try {
-      // Try to add lead to backend first
+      // Add lead to backend
       const backendResult = await addLead({
         name: newLead.name,
         email: newLead.email,
-        budget: Number(newLead.budget)
+        budget: Number(newLead.budget),
+        source: newLead.source,
+        status: newLead.status
       });
       
       if (backendResult.error) {
@@ -139,47 +153,49 @@ const Leads = () => {
         });
       } else {
         toast({
-          title: "Lead Added to Backend",
+          title: "Lead Added",
           description: "Successfully added lead to the database"
         });
       }
+      
+      // Refresh leads
+      const refreshedLeads = await getAllLeads();
+      setLeads(refreshedLeads);
+      
+      // Reset form and close dialog
+      setNewLead({
+        name: "",
+        email: "",
+        source: "Website",
+        status: "New",
+        budget: 100000
+      });
+      setIsAddLeadOpen(false);
+      
     } catch (error) {
-      console.error("Error adding lead to backend:", error);
-      // Continue with frontend-only logic if backend fails
+      console.error("Error adding lead:", error);
+      toast({
+        title: "Error",
+        description: "Could not add lead",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Create new lead with mock values for demo
-    const newLeadWithId = {
-      id: leads.length + 1,
-      ...newLead,
-      score: Math.floor(Math.random() * 30) + 70, // Random score between 70-99
-      budget: Number(newLead.budget)
-    };
-    
-    // Add to leads
-    setLeads([newLeadWithId, ...leads]);
-    
-    // Reset form and close dialog
-    setNewLead({
-      name: "",
-      email: "",
-      source: "Website",
-      status: "New",
-      budget: 100000
-    });
-    setIsAddLeadOpen(false);
-    setIsLoading(false);
-    
-    toast({
-      title: "Lead Added",
-      description: `${newLead.name} has been added successfully`
-    });
   };
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setNewLead(prev => ({ ...prev, [name]: value }));
   };
+  
+  const handleFilterChange = (name: string, value: string) => {
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+  
+  // Get unique status and source values for filters
+  const uniqueStatuses = ["all", ...new Set(leads.map(lead => lead.status || "").filter(Boolean))];
+  const uniqueSources = ["all", ...new Set(leads.map(lead => lead.source || "").filter(Boolean))];
 
   return (
     <Layout>
@@ -282,9 +298,93 @@ const Leads = () => {
             />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Filter className="mr-2 h-4 w-4" /> Filter
-            </Button>
+            <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Filter className="mr-2 h-4 w-4" /> Filter
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Filter Leads</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="status-filter">Status</Label>
+                    <Select 
+                      value={filters.status} 
+                      onValueChange={(value) => handleFilterChange("status", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {uniqueStatuses.map(status => (
+                          <SelectItem key={status} value={status}>
+                            {status === "all" ? "All Statuses" : status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="source-filter">Source</Label>
+                    <Select 
+                      value={filters.source} 
+                      onValueChange={(value) => handleFilterChange("source", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select source" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {uniqueSources.map(source => (
+                          <SelectItem key={source} value={source}>
+                            {source === "all" ? "All Sources" : source}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label>Budget Range</Label>
+                    <div className="flex gap-2 items-center">
+                      <Input 
+                        type="number" 
+                        placeholder="Min"
+                        value={filters.minBudget}
+                        onChange={(e) => handleFilterChange("minBudget", e.target.value)}
+                      />
+                      <span>to</span>
+                      <Input 
+                        type="number" 
+                        placeholder="Max"
+                        value={filters.maxBudget}
+                        onChange={(e) => handleFilterChange("maxBudget", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end space-x-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setFilters({
+                        status: "all",
+                        source: "all",
+                        minBudget: "",
+                        maxBudget: ""
+                      })}
+                    >
+                      Reset
+                    </Button>
+                    <Button onClick={() => setIsFilterDialogOpen(false)}>
+                      Apply Filters
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
             <div className="border rounded-md">
               <Button 
                 variant={viewMode === "table" ? "default" : "ghost"} 
@@ -306,7 +406,25 @@ const Leads = () => {
 
         {isFetchingBackend && (
           <div className="py-2 px-4 bg-blue-50 text-blue-800 rounded-md text-sm">
-            Connecting to backend service...
+            Fetching leads...
+          </div>
+        )}
+        
+        {Object.values(filters).some(val => val !== "all" && val !== "") && (
+          <div className="py-2 px-4 bg-blue-50 text-blue-800 rounded-md text-sm flex justify-between items-center">
+            <span>Filters applied: {filteredLeads.length} results</span>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setFilters({
+                status: "all",
+                source: "all",
+                minBudget: "",
+                maxBudget: ""
+              })}
+            >
+              Clear Filters
+            </Button>
           </div>
         )}
 
@@ -324,61 +442,77 @@ const Leads = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leads.map((lead) => (
-                  <TableRow 
-                    key={lead.id} 
-                    className="cursor-pointer hover:bg-gray-50"
-                    onClick={() => handleLeadClick(lead.id)}
-                  >
-                    <TableCell className="font-medium">{lead.name}</TableCell>
-                    <TableCell>{lead.email}</TableCell>
-                    <TableCell>{lead.source}</TableCell>
-                    <TableCell>${lead.budget?.toLocaleString()}</TableCell>
-                    <TableCell>
-                      <span className={getScoreColor(lead.score)}>{lead.score}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={getStatusColor(lead.status)}>
-                        {lead.status}
-                      </Badge>
+                {filteredLeads.length > 0 ? (
+                  filteredLeads.map((lead) => (
+                    <TableRow 
+                      key={lead.id} 
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleLeadClick(lead.id!)}
+                    >
+                      <TableCell className="font-medium">{lead.name}</TableCell>
+                      <TableCell>{lead.email}</TableCell>
+                      <TableCell>{lead.source || "N/A"}</TableCell>
+                      <TableCell>${lead.budget?.toLocaleString()}</TableCell>
+                      <TableCell>
+                        <span className={getScoreColor(lead.score || 0)}>{lead.score || "N/A"}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={getStatusColor(lead.status || "New")}>
+                          {lead.status || "New"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-4">
+                      {searchTerm ? "No leads match your search criteria" : "No leads found"}
                     </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {leads.map((lead) => (
-              <Card 
-                key={lead.id}
-                className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => handleLeadClick(lead.id)}
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{lead.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="text-sm">{lead.email}</div>
-                    <div className="flex justify-between items-center">
-                      <div className="text-sm text-gray-500">Source: {lead.source}</div>
-                      <Badge variant="outline" className={getStatusColor(lead.status)}>
-                        {lead.status}
-                      </Badge>
+            {filteredLeads.length > 0 ? (
+              filteredLeads.map((lead) => (
+                <Card 
+                  key={lead.id}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => handleLeadClick(lead.id!)}
+                >
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">{lead.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="text-sm">{lead.email}</div>
+                      <div className="flex justify-between items-center">
+                        <div className="text-sm text-gray-500">Source: {lead.source || "N/A"}</div>
+                        <Badge variant="outline" className={getStatusColor(lead.status || "New")}>
+                          {lead.status || "New"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm">Score:</div>
+                        <div className={`font-medium ${getScoreColor(lead.score || 0)}`}>
+                          {lead.score || "N/A"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <DollarSign className="h-4 w-4 text-gray-500" />
+                        <div className="font-medium">${lead.budget?.toLocaleString()}</div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-sm">Score:</div>
-                      <div className={`font-medium ${getScoreColor(lead.score)}`}>{lead.score}</div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <DollarSign className="h-4 w-4 text-gray-500" />
-                      <div className="font-medium">${lead.budget?.toLocaleString()}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <div className="col-span-full text-center py-8 text-gray-500">
+                {searchTerm ? "No leads match your search criteria" : "No leads found"}
+              </div>
+            )}
           </div>
         )}
       </div>

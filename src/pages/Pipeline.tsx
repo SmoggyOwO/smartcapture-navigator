@@ -1,50 +1,66 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
+import { getAllLeads, Lead, addLead, updateLead } from "@/services/api";
 
-// Sample data
+// Pipeline stages
 const pipelineStages = [
-  { id: "new", name: "New Leads", color: "bg-blue-100" },
-  { id: "contacted", name: "Contacted", color: "bg-yellow-100" },
-  { id: "qualified", name: "Qualified", color: "bg-purple-100" },
-  { id: "proposal", name: "Proposal", color: "bg-indigo-100" },
-  { id: "negotiation", name: "Negotiation", color: "bg-orange-100" },
-  { id: "closed", name: "Closed Won", color: "bg-green-100" }
+  { id: "New", name: "New Leads", color: "bg-blue-100" },
+  { id: "Contacted", name: "Contacted", color: "bg-yellow-100" },
+  { id: "Qualified", name: "Qualified", color: "bg-purple-100" },
+  { id: "Proposal", name: "Proposal", color: "bg-indigo-100" },
+  { id: "Negotiation", name: "Negotiation", color: "bg-orange-100" },
+  { id: "Closed", name: "Closed Won", color: "bg-green-100" }
 ];
 
-const pipelineData = [
-  { id: 1, name: "John Smith", company: "Acme Inc.", value: "$12,500", stage: "new", assignee: "AS" },
-  { id: 2, name: "Emily Johnson", company: "TechCorp", value: "$25,000", stage: "new", assignee: "RH" },
-  { id: 3, name: "Michael Brown", company: "Globex", value: "$8,300", stage: "contacted", assignee: "AS" },
-  { id: 4, name: "Sarah Williams", company: "Sterling Co.", value: "$18,750", stage: "contacted", assignee: "LM" },
-  { id: 5, name: "David Miller", company: "Initech", value: "$32,000", stage: "qualified", assignee: "RH" },
-  { id: 6, name: "Jessica Wilson", company: "Massive Dynamics", value: "$45,200", stage: "proposal", assignee: "LM" },
-  { id: 7, name: "Robert Taylor", company: "Wayne Enterprises", value: "$15,700", stage: "negotiation", assignee: "AS" },
-  { id: 8, name: "Jennifer Garcia", company: "Stark Industries", value: "$78,900", stage: "closed", assignee: "RH" },
+// Assignees
+const assignees = [
+  { id: "AS", name: "Alex Smith" },
+  { id: "RH", name: "Rachel Harris" },
+  { id: "LM", name: "Lisa Miller" }
 ];
 
 const Pipeline = () => {
-  const [leads, setLeads] = useState(pipelineData);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [isAddOpportunityOpen, setIsAddOpportunityOpen] = useState(false);
-  const [newOpportunity, setNewOpportunity] = useState({
+  const [newOpportunity, setNewOpportunity] = useState<Partial<Lead>>({
     name: "",
     company: "",
-    value: "",
-    stage: "new",
+    budget: 100000,
+    status: "New",
     assignee: "AS"
   });
   const { toast } = useToast();
   
   // Simple drag and drop implementation
   const [draggedItem, setDraggedItem] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Fetch leads
+    const fetchLeads = async () => {
+      try {
+        const fetchedLeads = await getAllLeads();
+        setLeads(fetchedLeads);
+      } catch (error) {
+        console.error("Error fetching leads:", error);
+        toast({
+          title: "Error",
+          description: "Could not fetch leads data",
+          variant: "destructive"
+        });
+      }
+    };
+    
+    fetchLeads();
+  }, [toast]);
 
   const handleDragStart = (leadId: number) => {
     setDraggedItem(leadId);
@@ -57,16 +73,29 @@ const Pipeline = () => {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>, stage: string) => {
     e.preventDefault();
     if (draggedItem !== null) {
-      setLeads(leads.map(lead => 
-        lead.id === draggedItem ? { ...lead, stage } : lead
-      ));
+      const lead = leads.find(l => l.id === draggedItem);
+      if (lead) {
+        // Update the lead status
+        const updatedLead = { ...lead, status: stage };
+        updateLead(updatedLead);
+        
+        // Update local state
+        setLeads(leads.map(l => 
+          l.id === draggedItem ? { ...l, status: stage } : l
+        ));
+        
+        toast({
+          title: "Lead Updated",
+          description: `${lead.name} moved to ${stage}`
+        });
+      }
       setDraggedItem(null);
     }
   };
 
-  const handleAddOpportunity = () => {
+  const handleAddOpportunity = async () => {
     // Validate form
-    if (!newOpportunity.name || !newOpportunity.company || !newOpportunity.value) {
+    if (!newOpportunity.name || !newOpportunity.company || !newOpportunity.budget) {
       toast({
         title: "Missing Information",
         description: "Please fill in all required fields",
@@ -75,40 +104,65 @@ const Pipeline = () => {
       return;
     }
 
-    // Format value if it doesn't start with $
-    const formattedValue = newOpportunity.value.startsWith('$') 
-      ? newOpportunity.value 
-      : `$${newOpportunity.value}`;
-
-    // Create new opportunity
-    const newLeadWithId = {
-      id: leads.length + 1,
-      ...newOpportunity,
-      value: formattedValue
-    };
-    
-    // Add to leads
-    setLeads([...leads, newLeadWithId]);
-    
-    // Reset form and close dialog
-    setNewOpportunity({
-      name: "",
-      company: "",
-      value: "",
-      stage: "new",
-      assignee: "AS"
-    });
-    setIsAddOpportunityOpen(false);
-    
-    toast({
-      title: "Opportunity Added",
-      description: `${newOpportunity.name} from ${newOpportunity.company} has been added successfully`
-    });
+    try {
+      // Generate an email if not provided
+      const email = newOpportunity.email || 
+        `${newOpportunity.name?.toLowerCase().replace(/\s+/g, '.')}@${newOpportunity.company?.toLowerCase().replace(/\s+/g, '')}.com`;
+      
+      // Add the new lead/opportunity
+      await addLead({
+        name: newOpportunity.name,
+        email,
+        budget: Number(newOpportunity.budget),
+        status: newOpportunity.status,
+        company: newOpportunity.company,
+        source: "Manual Entry",
+        assignee: newOpportunity.assignee
+      });
+      
+      // Refresh leads
+      const refreshedLeads = await getAllLeads();
+      setLeads(refreshedLeads);
+      
+      // Reset form and close dialog
+      setNewOpportunity({
+        name: "",
+        company: "",
+        budget: 100000,
+        status: "New",
+        assignee: "AS"
+      });
+      setIsAddOpportunityOpen(false);
+      
+      toast({
+        title: "Opportunity Added",
+        description: `${newOpportunity.name} from ${newOpportunity.company} has been added successfully`
+      });
+    } catch (error) {
+      console.error("Error adding opportunity:", error);
+      toast({
+        title: "Error",
+        description: "Could not add opportunity",
+        variant: "destructive"
+      });
+    }
   };
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setNewOpportunity(prev => ({ ...prev, [name]: value }));
+  };
+  
+  // Get initials for avatar
+  const getInitials = (assigneeId: string | undefined) => {
+    return assigneeId || "?";
+  };
+  
+  // Get assignee name
+  const getAssigneeName = (assigneeId: string | undefined) => {
+    if (!assigneeId) return "Unassigned";
+    const assignee = assignees.find(a => a.id === assigneeId);
+    return assignee?.name || "Unknown";
   };
 
   return (
@@ -117,7 +171,6 @@ const Pipeline = () => {
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Pipeline</h1>
           <div className="flex gap-2">
-            <Button variant="outline">Filter</Button>
             <Dialog open={isAddOpportunityOpen} onOpenChange={setIsAddOpportunityOpen}>
               <DialogTrigger asChild>
                 <Button>Add Opportunity</Button>
@@ -146,22 +199,34 @@ const Pipeline = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="value">Deal Value *</Label>
+                    <Label htmlFor="email">Email (Optional)</Label>
                     <Input 
-                      id="value" 
-                      name="value" 
+                      id="email" 
+                      name="email" 
+                      type="email"
+                      value={newOpportunity.email || ""} 
+                      onChange={handleInputChange} 
+                      placeholder="Auto-generated if left blank"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="budget">Deal Value *</Label>
+                    <Input 
+                      id="budget" 
+                      name="budget" 
+                      type="number"
                       placeholder="$0.00"
-                      value={newOpportunity.value} 
+                      value={newOpportunity.budget} 
                       onChange={handleInputChange} 
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="stage">Stage</Label>
+                    <Label htmlFor="status">Stage</Label>
                     <select 
-                      id="stage" 
-                      name="stage" 
+                      id="status" 
+                      name="status" 
                       className="w-full p-2 border rounded-md"
-                      value={newOpportunity.stage}
+                      value={newOpportunity.status}
                       onChange={handleInputChange}
                     >
                       {pipelineStages.map(stage => (
@@ -178,9 +243,9 @@ const Pipeline = () => {
                       value={newOpportunity.assignee}
                       onChange={handleInputChange}
                     >
-                      <option value="AS">Alex Smith</option>
-                      <option value="RH">Rachel Harris</option>
-                      <option value="LM">Lisa Miller</option>
+                      {assignees.map(assignee => (
+                        <option key={assignee.id} value={assignee.id}>{assignee.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="flex justify-end pt-4">
@@ -203,35 +268,40 @@ const Pipeline = () => {
               <div className={`${stage.color} p-2 rounded-t-md flex justify-between items-center`}>
                 <h3 className="font-medium">{stage.name}</h3>
                 <Badge variant="outline">
-                  {leads.filter(lead => lead.stage === stage.id).length}
+                  {leads.filter(lead => (lead.status || "New") === stage.id).length}
                 </Badge>
               </div>
               
               <div className="bg-gray-50 rounded-b-md p-2 min-h-[500px]">
                 {leads
-                  .filter(lead => lead.stage === stage.id)
+                  .filter(lead => (lead.status || "New") === stage.id)
                   .map(lead => (
                     <Card 
                       key={lead.id} 
                       className="mb-2 cursor-move"
                       draggable
-                      onDragStart={() => handleDragStart(lead.id)}
+                      onDragStart={() => handleDragStart(lead.id!)}
                     >
                       <CardContent className="p-3">
                         <div className="flex justify-between items-start">
                           <div>
                             <h4 className="font-medium">{lead.name}</h4>
-                            <div className="text-sm text-gray-500">{lead.company}</div>
-                            <div className="text-sm font-medium mt-1">{lead.value}</div>
+                            <div className="text-sm text-gray-500">{lead.company || "Unknown Company"}</div>
+                            <div className="text-sm font-medium mt-1">${lead.budget?.toLocaleString()}</div>
                           </div>
                           <Avatar className="h-8 w-8">
-                            <AvatarFallback>{lead.assignee}</AvatarFallback>
+                            <AvatarFallback>{getInitials(lead.assignee)}</AvatarFallback>
                           </Avatar>
                         </div>
                       </CardContent>
                     </Card>
                   ))
                 }
+                {leads.filter(lead => (lead.status || "New") === stage.id).length === 0 && (
+                  <div className="text-center text-gray-500 py-4 text-sm">
+                    No leads in this stage
+                  </div>
+                )}
               </div>
             </div>
           ))}

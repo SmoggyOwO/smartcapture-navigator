@@ -8,66 +8,95 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Calendar, Mail, Phone, Save, User, Zap } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Calendar, 
+  Mail, 
+  Phone, 
+  Save, 
+  User, 
+  Zap, 
+  Plus, 
+  MessageSquarePlus 
+} from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
-import { getLeadScore } from "@/services/api";
-
-// Mock data for a single lead
-const getMockLeadData = (id: string) => {
-  return {
-    id: parseInt(id),
-    name: "John Smith",
-    email: "john@example.com",
-    phone: "+1 (555) 123-4567",
-    company: "Acme Corporation",
-    source: "Website",
-    score: 85,
-    status: "New",
-    notes: "Initial contact made via website contact form. Expressed interest in our premium plan.",
-    lastContact: "2023-09-15",
-    budget: 75000, // Added budget field
-    activities: [
-      { date: "2023-09-15", type: "Email", description: "Sent welcome email" },
-      { date: "2023-09-18", type: "Call", description: "Discussed product features" },
-      { date: "2023-09-22", type: "Meeting", description: "Product demo scheduled" }
-    ]
-  };
-};
+import { 
+  getLeadScore, 
+  getLeadById, 
+  updateLead, 
+  addActivity, 
+  addNote,
+  Lead,
+  Activity
+} from "@/services/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  const [lead, setLead] = useState<any>(null);
+  const [lead, setLead] = useState<Lead | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<Lead>({} as Lead);
   const [aiScore, setAiScore] = useState<string | null>(null);
   const [isLoadingScore, setIsLoadingScore] = useState(false);
   
+  // New state for activity dialog
+  const [isAddActivityOpen, setIsAddActivityOpen] = useState(false);
+  const [newActivity, setNewActivity] = useState<Partial<Activity>>({
+    date: new Date().toISOString().split('T')[0],
+    type: "Email",
+    description: ""
+  });
+  
+  // New state for note dialog
+  const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
+  const [newNote, setNewNote] = useState("");
+  
   useEffect(() => {
     if (id) {
-      // In a real app, this would be an API call
-      const leadData = getMockLeadData(id);
-      setLead(leadData);
-      setFormData(leadData);
+      // Get lead by ID from our API
+      const leadData = getLeadById(Number(id));
+      if (leadData) {
+        setLead(leadData);
+        setFormData(leadData);
+      } else {
+        toast({
+          title: "Lead Not Found",
+          description: "The requested lead could not be found",
+          variant: "destructive"
+        });
+        navigate("/leads");
+      }
     }
-  }, [id]);
+  }, [id, navigate, toast]);
   
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev: any) => ({ ...prev, [name]: value }));
   };
   
   const handleSave = () => {
-    // In a real app, this would be an API call to update the lead
-    setLead(formData);
-    setIsEditing(false);
-    toast({
-      title: "Lead Updated",
-      description: "Lead information has been successfully updated"
-    });
+    // Save to our API
+    const result = updateLead(formData);
+    
+    if (result.success) {
+      setLead(formData);
+      setIsEditing(false);
+      toast({
+        title: "Lead Updated",
+        description: "Lead information has been successfully updated"
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: result.error || "Could not update lead",
+        variant: "destructive"
+      });
+    }
   };
   
   const getStatusColor = (status: string) => {
@@ -120,6 +149,110 @@ const LeadDetails = () => {
     }
   };
   
+  const handleAddActivity = () => {
+    if (!id || !newActivity.description) {
+      toast({
+        title: "Missing Information",
+        description: "Please provide a description",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const result = addActivity(Number(id), newActivity as Activity);
+    
+    if (result.success) {
+      // Refresh lead data
+      const updatedLead = getLeadById(Number(id));
+      if (updatedLead) {
+        setLead(updatedLead);
+      }
+      
+      // Reset form and close dialog
+      setNewActivity({
+        date: new Date().toISOString().split('T')[0],
+        type: "Email",
+        description: ""
+      });
+      setIsAddActivityOpen(false);
+      
+      toast({
+        title: "Activity Added",
+        description: "The activity has been added successfully"
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: result.error || "Could not add activity",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  const handleAddNote = () => {
+    if (!id || !newNote) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter a note",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const result = addNote(Number(id), newNote);
+    
+    if (result.success) {
+      // Refresh lead data
+      const updatedLead = getLeadById(Number(id));
+      if (updatedLead) {
+        setLead(updatedLead);
+      }
+      
+      // Reset form and close dialog
+      setNewNote("");
+      setIsAddNoteOpen(false);
+      
+      toast({
+        title: "Note Added",
+        description: "The note has been added successfully"
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: result.error || "Could not add note",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  const handleSendEmail = () => {
+    if (!lead?.email) return;
+    
+    // Open Gmail compose window
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(lead.email)}`;
+    window.open(gmailUrl, '_blank');
+    
+    // Add an activity
+    if (id) {
+      addActivity(Number(id), {
+        date: new Date().toISOString().split('T')[0],
+        type: "Email",
+        description: "Email sent via Gmail"
+      });
+      
+      // Refresh lead data
+      const updatedLead = getLeadById(Number(id));
+      if (updatedLead) {
+        setLead(updatedLead);
+      }
+    }
+  };
+  
+  const handleActivityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setNewActivity(prev => ({ ...prev, [name]: value }));
+  };
+  
   if (!lead) {
     return (
       <Layout>
@@ -136,8 +269,8 @@ const LeadDetails = () => {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-3xl font-bold">{lead.name}</h1>
-          <Badge variant="outline" className={getStatusColor(lead.status)}>
-            {lead.status}
+          <Badge variant="outline" className={getStatusColor(lead.status || "New")}>
+            {lead.status || "New"}
           </Badge>
         </div>
         
@@ -186,7 +319,7 @@ const LeadDetails = () => {
                             <label className="text-sm font-medium">Company</label>
                             <Input 
                               name="company"
-                              value={formData.company}
+                              value={formData.company || ""}
                               onChange={handleInputChange} 
                             />
                           </div>
@@ -205,7 +338,7 @@ const LeadDetails = () => {
                             <label className="text-sm font-medium">Phone</label>
                             <Input 
                               name="phone"
-                              value={formData.phone}
+                              value={formData.phone || ""}
                               onChange={handleInputChange} 
                             />
                           </div>
@@ -216,7 +349,7 @@ const LeadDetails = () => {
                             <label className="text-sm font-medium">Source</label>
                             <Input 
                               name="source"
-                              value={formData.source}
+                              value={formData.source || ""}
                               onChange={handleInputChange} 
                             />
                           </div>
@@ -224,7 +357,7 @@ const LeadDetails = () => {
                             <label className="text-sm font-medium">Status</label>
                             <select 
                               name="status"
-                              value={formData.status}
+                              value={formData.status || "New"}
                               onChange={(e) => handleInputChange(e as any)} 
                               className="w-full p-2 border rounded-md"
                             >
@@ -272,7 +405,7 @@ const LeadDetails = () => {
                             <Phone className="h-5 w-5 text-gray-500 mr-2" />
                             <div>
                               <div className="text-sm text-gray-500">Phone</div>
-                              <div className="font-medium">{lead.phone}</div>
+                              <div className="font-medium">{lead.phone || "Not provided"}</div>
                             </div>
                           </div>
                           
@@ -280,7 +413,7 @@ const LeadDetails = () => {
                             <Calendar className="h-5 w-5 text-gray-500 mr-2" />
                             <div>
                               <div className="text-sm text-gray-500">Last Contact</div>
-                              <div className="font-medium">{lead.lastContact}</div>
+                              <div className="font-medium">{lead.lastContact || "No contact"}</div>
                             </div>
                           </div>
                         </div>
@@ -290,17 +423,17 @@ const LeadDetails = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4">
                           <div>
                             <div className="text-sm text-gray-500">Company</div>
-                            <div className="font-medium">{lead.company}</div>
+                            <div className="font-medium">{lead.company || "Not provided"}</div>
                           </div>
                           
                           <div>
                             <div className="text-sm text-gray-500">Source</div>
-                            <div className="font-medium">{lead.source}</div>
+                            <div className="font-medium">{lead.source || "Not specified"}</div>
                           </div>
                           
                           <div>
                             <div className="text-sm text-gray-500">Lead Score</div>
-                            <div className="font-medium">{lead.score}</div>
+                            <div className="font-medium">{lead.score || "Not scored"}</div>
                           </div>
                           
                           <div>
@@ -316,32 +449,87 @@ const LeadDetails = () => {
               
               <TabsContent value="activity" className="mt-4">
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>Activity History</CardTitle>
+                    <Dialog open={isAddActivityOpen} onOpenChange={setIsAddActivityOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline">
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add Activity
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add New Activity</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="type">Type</Label>
+                            <select 
+                              id="type" 
+                              name="type" 
+                              className="w-full p-2 border rounded-md"
+                              value={newActivity.type}
+                              onChange={handleActivityChange}
+                            >
+                              <option value="Email">Email</option>
+                              <option value="Call">Phone Call</option>
+                              <option value="Meeting">Meeting</option>
+                              <option value="Note">Note</option>
+                              <option value="Task">Task</option>
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="date">Date</Label>
+                            <Input 
+                              id="date" 
+                              name="date" 
+                              type="date"
+                              value={newActivity.date}
+                              onChange={handleActivityChange} 
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="description">Description</Label>
+                            <Textarea 
+                              id="description" 
+                              name="description" 
+                              value={newActivity.description}
+                              onChange={handleActivityChange as any} 
+                            />
+                          </div>
+                          <div className="flex justify-end pt-4">
+                            <Button onClick={handleAddActivity}>
+                              Add Activity
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {lead.activities.map((activity: any, index: number) => (
-                        <div key={index} className="flex">
-                          <div className="mr-4 relative">
-                            <div className="w-3 h-3 rounded-full bg-blue-500" />
-                            {index < lead.activities.length - 1 && (
-                              <div className="absolute top-3 left-1.5 w-0.5 h-full -ml-px bg-gray-200" />
-                            )}
-                          </div>
-                          <div className="flex-1 pb-4">
-                            <div className="flex items-start justify-between">
-                              <h4 className="font-medium">{activity.type}</h4>
-                              <span className="text-sm text-gray-500">{activity.date}</span>
+                      {lead.activities && lead.activities.length > 0 ? (
+                        lead.activities.map((activity, index) => (
+                          <div key={activity.id || index} className="flex">
+                            <div className="mr-4 relative">
+                              <div className="w-3 h-3 rounded-full bg-blue-500" />
+                              {index < (lead.activities?.length || 0) - 1 && (
+                                <div className="absolute top-3 left-1.5 w-0.5 h-full -ml-px bg-gray-200" />
+                              )}
                             </div>
-                            <p className="text-gray-600 mt-1">{activity.description}</p>
+                            <div className="flex-1 pb-4">
+                              <div className="flex items-start justify-between">
+                                <h4 className="font-medium">{activity.type}</h4>
+                                <span className="text-sm text-gray-500">{activity.date}</span>
+                              </div>
+                              <p className="text-gray-600 mt-1">{activity.description}</p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                      
-                      <div className="mt-4">
-                        <Button variant="outline" className="w-full">Add Activity</Button>
-                      </div>
+                        ))
+                      ) : (
+                        <p className="text-gray-500 text-center py-4">No activities recorded yet</p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -351,13 +539,38 @@ const LeadDetails = () => {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>Notes</CardTitle>
-                    <Button variant="outline">Add Note</Button>
+                    <Dialog open={isAddNoteOpen} onOpenChange={setIsAddNoteOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline">
+                          <MessageSquarePlus className="mr-2 h-4 w-4" />
+                          Add Note
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add New Note</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <Textarea 
+                            className="min-h-[150px]"
+                            placeholder="Enter your note here..."
+                            value={newNote}
+                            onChange={(e) => setNewNote(e.target.value)}
+                          />
+                          <div className="flex justify-end pt-4">
+                            <Button onClick={handleAddNote}>
+                              Add Note
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </CardHeader>
                   <CardContent>
                     <Textarea 
                       className="min-h-[150px]"
-                      placeholder="Enter notes about this lead"
-                      value={lead.notes}
+                      placeholder="No notes yet for this lead"
+                      value={lead.notes || ""}
                       readOnly
                     />
                   </CardContent>
@@ -373,15 +586,30 @@ const LeadDetails = () => {
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button className="w-full">
+                <Button className="w-full" onClick={handleSendEmail}>
                   <Mail className="mr-2 h-4 w-4" />
                   Send Email
                 </Button>
-                <Button variant="outline" className="w-full">
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => setIsAddActivityOpen(true)}
+                >
                   <Phone className="mr-2 h-4 w-4" />
                   Log Call
                 </Button>
-                <Button variant="outline" className="w-full">
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => {
+                    setNewActivity({
+                      ...newActivity,
+                      type: "Meeting",
+                      description: "Meeting scheduled with " + lead.name
+                    });
+                    setIsAddActivityOpen(true);
+                  }}
+                >
                   <Calendar className="mr-2 h-4 w-4" />
                   Schedule Meeting
                 </Button>
@@ -404,7 +632,7 @@ const LeadDetails = () => {
               <CardContent>
                 <div className="flex items-center justify-center flex-col">
                   <div className="w-24 h-24 rounded-full border-8 border-blue-500 flex items-center justify-center">
-                    <span className="text-3xl font-bold">{lead.score}</span>
+                    <span className="text-3xl font-bold">{lead.score || "N/A"}</span>
                   </div>
                   
                   {aiScore && (
