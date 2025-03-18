@@ -1,5 +1,5 @@
 
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,10 +10,13 @@ import {
   Settings as SettingsIcon,
   LogOut,
   Menu,
-  X
+  X,
+  BarChart3
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
+import { useAuth } from "@/components/ProtectedRoute";
+import { useToast } from "@/components/ui/use-toast";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -43,17 +46,31 @@ const NavItem = ({ icon, label, href, active, onClick }: NavItemProps) => (
 
 export const Layout = ({ children }: LayoutProps) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { logout, getUser } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
   
   const pathname = window.location.pathname;
+  const user = getUser();
   
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
+  };
+  
+  const handleLogout = () => {
+    logout();
+    toast({
+      title: "Logout Successful",
+      description: "You have been logged out successfully"
+    });
+    navigate("/login");
   };
   
   const navItems = [
     { icon: <LayoutDashboard className="h-5 w-5" />, label: "Dashboard", href: "/dashboard" },
     { icon: <Users className="h-5 w-5" />, label: "Leads", href: "/leads" },
     { icon: <PieChart className="h-5 w-5" />, label: "Pipeline", href: "/pipeline" },
+    { icon: <BarChart3 className="h-5 w-5" />, label: "Analytics", href: "/analytics" },
     { icon: <SettingsIcon className="h-5 w-5" />, label: "Settings", href: "/settings" },
   ];
   
@@ -87,14 +104,19 @@ export const Layout = ({ children }: LayoutProps) => {
         
         <div className="mt-auto">
           <Separator className="my-4" />
-          <div className="flex items-center p-2">
-            <Avatar className="h-9 w-9">
-              <AvatarFallback>AU</AvatarFallback>
-            </Avatar>
-            <div className="ml-2">
-              <p className="text-sm font-medium">Admin User</p>
-              <p className="text-xs text-gray-500">admin@example.com</p>
+          <div className="flex items-center justify-between p-2">
+            <div className="flex items-center">
+              <Avatar className="h-9 w-9">
+                <AvatarFallback>{user?.name?.split(' ').map((n: string) => n[0]).join('') || 'U'}</AvatarFallback>
+              </Avatar>
+              <div className="ml-2">
+                <p className="text-sm font-medium">{user?.name || 'User'}</p>
+                <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
+              </div>
             </div>
+            <Button variant="ghost" size="icon" onClick={handleLogout}>
+              <LogOut className="h-5 w-5" />
+            </Button>
           </div>
         </div>
       </div>
@@ -133,14 +155,22 @@ export const Layout = ({ children }: LayoutProps) => {
                   {renderNavItems(closeMobileMenu)}
                   
                   <Separator className="my-4" />
-                  <div className="flex items-center p-2">
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback>AU</AvatarFallback>
-                    </Avatar>
-                    <div className="ml-2">
-                      <p className="text-sm font-medium">Admin User</p>
-                      <p className="text-xs text-gray-500">admin@example.com</p>
+                  <div className="flex items-center justify-between p-2">
+                    <div className="flex items-center">
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback>{user?.name?.split(' ').map((n: string) => n[0]).join('') || 'U'}</AvatarFallback>
+                      </Avatar>
+                      <div className="ml-2">
+                        <p className="text-sm font-medium">{user?.name || 'User'}</p>
+                        <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
+                      </div>
                     </div>
+                    <Button variant="ghost" size="icon" onClick={() => {
+                      handleLogout();
+                      closeMobileMenu();
+                    }}>
+                      <LogOut className="h-5 w-5" />
+                    </Button>
                   </div>
                 </div>
               </SheetContent>
