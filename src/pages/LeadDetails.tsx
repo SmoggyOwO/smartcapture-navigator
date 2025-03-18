@@ -8,9 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Calendar, Mail, Phone, Save, User } from "lucide-react";
+import { ArrowLeft, Calendar, Mail, Phone, Save, User, Zap } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
+import { getLeadScore } from "@/services/api";
 
 // Mock data for a single lead
 const getMockLeadData = (id: string) => {
@@ -25,6 +26,7 @@ const getMockLeadData = (id: string) => {
     status: "New",
     notes: "Initial contact made via website contact form. Expressed interest in our premium plan.",
     lastContact: "2023-09-15",
+    budget: 75000, // Added budget field
     activities: [
       { date: "2023-09-15", type: "Email", description: "Sent welcome email" },
       { date: "2023-09-18", type: "Call", description: "Discussed product features" },
@@ -41,6 +43,8 @@ const LeadDetails = () => {
   const [lead, setLead] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<any>({});
+  const [aiScore, setAiScore] = useState<string | null>(null);
+  const [isLoadingScore, setIsLoadingScore] = useState(false);
   
   useEffect(() => {
     if (id) {
@@ -73,6 +77,46 @@ const LeadDetails = () => {
       case "Qualified": return "bg-green-100 text-green-800";
       case "Disqualified": return "bg-red-100 text-red-800";
       default: return "bg-gray-100 text-gray-800";
+    }
+  };
+  
+  const getAIScoreColor = (score: string) => {
+    switch (score) {
+      case "Hot": return "text-red-600";
+      case "Warm": return "text-orange-600";
+      case "Cold": return "text-blue-600";
+      default: return "text-gray-600";
+    }
+  };
+  
+  const fetchAIScore = async () => {
+    if (!lead) return;
+    
+    setIsLoadingScore(true);
+    try {
+      const response = await getLeadScore(lead.email);
+      if (response.lead_score) {
+        setAiScore(response.lead_score);
+        toast({
+          title: "AI Score Retrieved",
+          description: `Lead classified as: ${response.lead_score}`
+        });
+      } else {
+        toast({
+          title: "Score Not Available",
+          description: response.message || "Could not retrieve AI score",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching AI score:", error);
+      toast({
+        title: "Error",
+        description: "Could not connect to AI scoring service. Make sure your backend is running.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingScore(false);
     }
   };
   
@@ -191,6 +235,18 @@ const LeadDetails = () => {
                             </select>
                           </div>
                         </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Budget ($)</label>
+                            <Input 
+                              name="budget"
+                              type="number"
+                              value={formData.budget}
+                              onChange={handleInputChange} 
+                            />
+                          </div>
+                        </div>
                       </div>
                     ) : (
                       // View mode
@@ -245,6 +301,11 @@ const LeadDetails = () => {
                           <div>
                             <div className="text-sm text-gray-500">Lead Score</div>
                             <div className="font-medium">{lead.score}</div>
+                          </div>
+                          
+                          <div>
+                            <div className="text-sm text-gray-500">Budget</div>
+                            <div className="font-medium">${lead.budget?.toLocaleString()}</div>
                           </div>
                         </div>
                       </div>
@@ -324,6 +385,15 @@ const LeadDetails = () => {
                   <Calendar className="mr-2 h-4 w-4" />
                   Schedule Meeting
                 </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full mt-4" 
+                  onClick={fetchAIScore}
+                  disabled={isLoadingScore}
+                >
+                  <Zap className="mr-2 h-4 w-4" />
+                  {isLoadingScore ? "Fetching AI Score..." : "Get AI Score"}
+                </Button>
               </CardContent>
             </Card>
             
@@ -332,13 +402,23 @@ const LeadDetails = () => {
                 <CardTitle>Lead Score</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-center">
+                <div className="flex items-center justify-center flex-col">
                   <div className="w-24 h-24 rounded-full border-8 border-blue-500 flex items-center justify-center">
                     <span className="text-3xl font-bold">{lead.score}</span>
                   </div>
-                </div>
-                <div className="mt-4 text-center">
-                  <p className="text-sm text-gray-600">Lead quality assessment based on interaction and profile data</p>
+                  
+                  {aiScore && (
+                    <div className="mt-4 text-center">
+                      <h3 className="font-semibold">AI Classification:</h3>
+                      <p className={`text-xl font-bold ${getAIScoreColor(aiScore)}`}>
+                        {aiScore}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-gray-600">Lead quality assessment based on interaction and profile data</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>

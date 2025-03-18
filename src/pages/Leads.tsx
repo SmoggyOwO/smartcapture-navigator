@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -8,21 +8,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Filter, Plus, List, Grid } from "lucide-react";
+import { Search, Filter, Plus, List, Grid, DollarSign } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
+import { addLead, getAllLeads } from "@/services/api";
 
 // Sample data
 const leadsData = [
-  { id: 1, name: "John Smith", email: "john@example.com", source: "Website", score: 85, status: "New" },
-  { id: 2, name: "Emily Johnson", email: "emily@example.com", source: "Referral", score: 92, status: "Contacted" },
-  { id: 3, name: "Michael Brown", email: "michael@example.com", source: "LinkedIn", score: 78, status: "Qualified" },
-  { id: 4, name: "Sarah Williams", email: "sarah@example.com", source: "Email Campaign", score: 65, status: "New" },
-  { id: 5, name: "David Miller", email: "david@example.com", source: "Trade Show", score: 73, status: "Disqualified" },
-  { id: 6, name: "Jessica Wilson", email: "jessica@example.com", source: "Website", score: 81, status: "Contacted" },
-  { id: 7, name: "Robert Taylor", email: "robert@example.com", source: "Advertisement", score: 69, status: "New" },
-  { id: 8, name: "Jennifer Garcia", email: "jennifer@example.com", source: "Webinar", score: 88, status: "Qualified" },
+  { id: 1, name: "John Smith", email: "john@example.com", source: "Website", score: 85, status: "New", budget: 150000 },
+  { id: 2, name: "Emily Johnson", email: "emily@example.com", source: "Referral", score: 92, status: "Contacted", budget: 250000 },
+  { id: 3, name: "Michael Brown", email: "michael@example.com", source: "LinkedIn", score: 78, status: "Qualified", budget: 120000 },
+  { id: 4, name: "Sarah Williams", email: "sarah@example.com", source: "Email Campaign", score: 65, status: "New", budget: 85000 },
+  { id: 5, name: "David Miller", email: "david@example.com", source: "Trade Show", score: 73, status: "Disqualified", budget: 190000 },
+  { id: 6, name: "Jessica Wilson", email: "jessica@example.com", source: "Website", score: 81, status: "Contacted", budget: 175000 },
+  { id: 7, name: "Robert Taylor", email: "robert@example.com", source: "Advertisement", score: 69, status: "New", budget: 95000 },
+  { id: 8, name: "Jennifer Garcia", email: "jennifer@example.com", source: "Webinar", score: 88, status: "Qualified", budget: 230000 },
 ];
 
 const Leads = () => {
@@ -30,15 +31,50 @@ const Leads = () => {
   const [leads, setLeads] = useState(leadsData);
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingBackend, setIsFetchingBackend] = useState(false);
   const [newLead, setNewLead] = useState({
     name: "",
     email: "",
     source: "Website",
-    status: "New"
+    status: "New",
+    budget: 100000
   });
   
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Try to fetch leads from the backend if it's available
+    const fetchLeadsFromBackend = async () => {
+      setIsFetchingBackend(true);
+      try {
+        const backendLeads = await getAllLeads();
+        if (backendLeads && backendLeads.length > 0) {
+          // Merge with our frontend data, avoiding duplicates based on email
+          const emailsInBackend = backendLeads.map((lead: any) => lead.email);
+          const frontendLeadsNotInBackend = leadsData.filter(lead => 
+            !emailsInBackend.includes(lead.email)
+          );
+          
+          // Combine both sets of leads
+          setLeads([...backendLeads, ...frontendLeadsNotInBackend]);
+          
+          toast({
+            title: "Connected to Backend",
+            description: `Successfully fetched ${backendLeads.length} leads from database`
+          });
+        }
+      } catch (error) {
+        console.log("Could not fetch leads from backend:", error);
+        // Silently fall back to frontend data
+      } finally {
+        setIsFetchingBackend(false);
+      }
+    };
+    
+    fetchLeadsFromBackend();
+  }, [toast]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -75,7 +111,7 @@ const Leads = () => {
     navigate(`/leads/${leadId}`);
   };
   
-  const handleAddLead = () => {
+  const handleAddLead = async () => {
     // Validate inputs
     if (!newLead.name || !newLead.email) {
       toast({
@@ -86,11 +122,38 @@ const Leads = () => {
       return;
     }
     
+    setIsLoading(true);
+    
+    try {
+      // Try to add lead to backend first
+      const backendResult = await addLead({
+        name: newLead.name,
+        email: newLead.email,
+        budget: Number(newLead.budget)
+      });
+      
+      if (backendResult.error) {
+        toast({
+          title: "Backend Warning",
+          description: backendResult.error
+        });
+      } else {
+        toast({
+          title: "Lead Added to Backend",
+          description: "Successfully added lead to the database"
+        });
+      }
+    } catch (error) {
+      console.error("Error adding lead to backend:", error);
+      // Continue with frontend-only logic if backend fails
+    }
+    
     // Create new lead with mock values for demo
     const newLeadWithId = {
       id: leads.length + 1,
       ...newLead,
       score: Math.floor(Math.random() * 30) + 70, // Random score between 70-99
+      budget: Number(newLead.budget)
     };
     
     // Add to leads
@@ -101,9 +164,11 @@ const Leads = () => {
       name: "",
       email: "",
       source: "Website",
-      status: "New"
+      status: "New",
+      budget: 100000
     });
     setIsAddLeadOpen(false);
+    setIsLoading(false);
     
     toast({
       title: "Lead Added",
@@ -152,6 +217,16 @@ const Leads = () => {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="budget">Budget ($)</Label>
+                  <Input 
+                    id="budget" 
+                    name="budget" 
+                    type="number" 
+                    value={newLead.budget} 
+                    onChange={handleInputChange} 
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="source">Lead Source</Label>
                   <select 
                     id="source" 
@@ -186,7 +261,9 @@ const Leads = () => {
                   </select>
                 </div>
                 <div className="flex justify-end pt-4">
-                  <Button onClick={handleAddLead}>Add Lead</Button>
+                  <Button onClick={handleAddLead} disabled={isLoading}>
+                    {isLoading ? "Adding..." : "Add Lead"}
+                  </Button>
                 </div>
               </div>
             </DialogContent>
@@ -227,6 +304,12 @@ const Leads = () => {
           </div>
         </div>
 
+        {isFetchingBackend && (
+          <div className="py-2 px-4 bg-blue-50 text-blue-800 rounded-md text-sm">
+            Connecting to backend service...
+          </div>
+        )}
+
         {viewMode === "table" ? (
           <div className="rounded-md border">
             <Table>
@@ -235,6 +318,7 @@ const Leads = () => {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Source</TableHead>
+                  <TableHead>Budget</TableHead>
                   <TableHead>Score</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -249,6 +333,7 @@ const Leads = () => {
                     <TableCell className="font-medium">{lead.name}</TableCell>
                     <TableCell>{lead.email}</TableCell>
                     <TableCell>{lead.source}</TableCell>
+                    <TableCell>${lead.budget?.toLocaleString()}</TableCell>
                     <TableCell>
                       <span className={getScoreColor(lead.score)}>{lead.score}</span>
                     </TableCell>
@@ -285,6 +370,10 @@ const Leads = () => {
                     <div className="flex items-center gap-2">
                       <div className="text-sm">Score:</div>
                       <div className={`font-medium ${getScoreColor(lead.score)}`}>{lead.score}</div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <DollarSign className="h-4 w-4 text-gray-500" />
+                      <div className="font-medium">${lead.budget?.toLocaleString()}</div>
                     </div>
                   </div>
                 </CardContent>
